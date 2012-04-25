@@ -432,10 +432,18 @@ public:
     {
         version(Windows)
         {
+            //FILETIME represents hnsecs from midnight, January 1st, 1601.
+            enum hnsecsFrom1601 = 504_911_232_000_000_000L;
+
             FILETIME fileTime;
+
             GetSystemTimeAsFileTime(&fileTime);
 
-            return FILETIMEToStdTime(&fileTime);
+            ulong tempHNSecs = fileTime.dwHighDateTime;
+            tempHNSecs <<= 32;
+            tempHNSecs |= fileTime.dwLowDateTime;
+
+            return cast(long)tempHNSecs + hnsecsFrom1601;
         }
         else version(Posix)
         {
@@ -29278,7 +29286,7 @@ assert(tz.dstName == "PDT");
         version(Posix)
             auto file = tzDatabaseDir ~ name;
         else version(Windows)
-            auto file = tzDatabaseDir ~ replace(strip(name), "/", dirSeparator);
+            auto file = tzDatabaseDir ~ replace(strip(name), "/", sep);
 
         enforce(file.exists, new DateTimeException(format("File %s does not exist.", file)));
         enforce(file.isFile, new DateTimeException(format("%s is not a file.", file)));
@@ -29587,10 +29595,10 @@ assert(tz.dstName == "PDT");
         version(Posix)
             subName = strip(subName);
         else version(Windows)
-            subName = replace(strip(subName), "/", dirSeparator);
+            subName = replace(strip(subName), "/", sep);
 
-        if(!tzDatabaseDir.endsWith(dirSeparator))
-            tzDatabaseDir ~= dirSeparator;
+        if(!tzDatabaseDir.endsWith(sep))
+            tzDatabaseDir ~= sep;
 
         enforce(tzDatabaseDir.exists, new DateTimeException(format("Directory %s does not exist.", tzDatabaseDir)));
         enforce(tzDatabaseDir.isDir, new DateTimeException(format("%s is not a directory.", tzDatabaseDir)));
@@ -31358,22 +31366,6 @@ version(StdDdoc)
     /++
         $(BLUE This function is Windows-Only.)
 
-        Converts a $(D FILETIME) struct to the number of hnsecs since midnight,
-        January 1st, 1 A.D.
-
-        Params:
-            ft = The $(D FILETIME) struct to convert.
-
-        Throws:
-            $(D DateTimeException) if the given $(D FILETIME) cannot be
-            represented as the return value.
-      +/
-    long FILETIMEToStdTime(const FILETIME* ft);
-
-
-    /++
-        $(BLUE This function is Windows-Only.)
-
         Converts a $(D FILETIME) struct to a $(D SysTime).
 
         Params:
@@ -31383,25 +31375,10 @@ version(StdDdoc)
 
         Throws:
             $(D DateTimeException) if the given $(D FILETIME) will not fit in a
-            $(D SysTime).
+            $(D SysTime) or if the $(D FILETIME) cannot be converted to a
+            $(D SYSTEMTIME).
       +/
     SysTime FILETIMEToSysTime(const FILETIME* ft, immutable TimeZone tz = LocalTime());
-
-
-    /++
-        $(BLUE This function is Windows-Only.)
-
-        Converts a number of hnsecs since midnight, January 1st, 1 A.D. to a
-        $(D FILETIME) struct.
-
-        Params:
-            sysTime = The $(D SysTime) to convert.
-
-        Throws:
-            $(D DateTimeException) if the given value will not fit in a
-            $(D FILETIME).
-      +/
-    FILETIME stdTimeToFILETIME(long stdTime);
 
 
     /++
@@ -31527,24 +31504,15 @@ else version(Windows)
         }
     }
 
-    private enum hnsecsFrom1601 = 504_911_232_000_000_000L;
-
-    long FILETIMEToStdTime(const FILETIME* ft)
-    {
-        ULARGE_INTEGER ul;
-        ul.HighPart = ft.dwHighDateTime;
-        ul.LowPart = ft.dwLowDateTime;
-        ulong tempHNSecs = ul.QuadPart;
-
-        if(tempHNSecs > long.max - hnsecsFrom1601)
-            throw new DateTimeException("The given FILETIME cannot be represented as a stdTime value.");
-
-        return cast(long)tempHNSecs + hnsecsFrom1601;
-    }
 
     SysTime FILETIMEToSysTime(const FILETIME* ft, immutable TimeZone tz = LocalTime())
     {
-        auto sysTime = SysTime(FILETIMEToStdTime(ft), UTC());
+        SYSTEMTIME st = void;
+
+        if(!FileTimeToSystemTime(ft, &st))
+            throw new DateTimeException("FileTimeToSystemTime() failed.");
+
+        auto sysTime = SYSTEMTIMEToSysTime(&st, UTC());
         sysTime.timezone = tz;
 
         return sysTime;
@@ -31569,24 +31537,14 @@ else version(Windows)
     }
 
 
-    FILETIME stdTimeToFILETIME(long stdTime)
-    {
-        if(stdTime < hnsecsFrom1601)
-            throw new DateTimeException("The given stdTime value cannot be represented as a FILETIME.");
-
-        ULARGE_INTEGER ul;
-        ul.QuadPart = cast(ulong)stdTime - hnsecsFrom1601;
-
-        FILETIME ft;
-        ft.dwHighDateTime = ul.HighPart;
-        ft.dwLowDateTime = ul.LowPart;
-
-        return ft;
-    }
-
     FILETIME SysTimeToFILETIME(SysTime sysTime)
     {
-        return stdTimeToFILETIME(sysTime.stdTime);
+        SYSTEMTIME st = SysTimeToSYSTEMTIME(sysTime.toUTC());
+
+        FILETIME ft = void;
+        SystemTimeToFileTime(&st, &ft);
+
+        return ft;
     }
 
     unittest

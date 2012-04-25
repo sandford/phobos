@@ -22,7 +22,8 @@ public import std.conv;
 public import std.cpuid;
 public import std.cstream;
 public import std.ctype;
-public import std.datetime;
+public import std.date;
+public import std.dateparse;
 public import std.demangle;
 public import std.file;
 public import std.format;
@@ -78,7 +79,7 @@ version (all)
     int a[];
     a.reverse;                          // adi
     a.sort;                             // qsort
-    Clock.currTime();                   // datetime
+    std.date.getUTCtime();                      // date
     Exception e = new ReadException(""); // stream
     din.eof();                           // cstream
     isValidDchar(cast(dchar)0);                 // utf

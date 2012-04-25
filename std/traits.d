@@ -188,10 +188,7 @@ template moduleName(alias T)
         static assert(T.stringof[0..8] != "package ", "cannot get the module name for a package");
 
     static if (T.stringof.length >= 8 && T.stringof[0..7] == "module ")
-        static if (__traits(compiles, packageName!(T)))
-            enum moduleName = packageName!(T) ~ '.' ~ T.stringof[7..$];
-        else
-            enum moduleName = T.stringof[7..$];
+        enum moduleName = packageName!(T) ~ '.' ~ T.stringof[7..$];
     else
         alias moduleName!(__traits(parent, T)) moduleName;
 }
@@ -549,6 +546,7 @@ unittest
     static assert(functionAttributes!((int a) {}) == (FA.safe | FA.pure_ | FA.nothrow_));
 }
 
+
 /**
 Checks the func that is @safe or @trusted
 
@@ -759,19 +757,24 @@ template variadicFunctionStyle(func...)
 {
     alias Unqual!(FunctionTypeOf!func) Func;
 
-    // TypeFuncion --> CallConvention FuncAttrs Arguments ArgClose Type
-    enum callconv = functionLinkage!Func;
-    enum mfunc = mangledName!Func;
-    enum mtype = mangledName!(ReturnType!Func);
-    static assert(mfunc[$ - mtype.length .. $] == mtype, mfunc ~ "|" ~ mtype);
+    Variadic determineVariadicity()
+    {
+        // TypeFuncion --> CallConvention FuncAttrs Arguments ArgClose Type
+        immutable callconv = functionLinkage!Func;
+        immutable mfunc = mangledName!Func;
+        immutable mtype = mangledName!(ReturnType!Func);
+        debug assert(mfunc[$ - mtype.length .. $] == mtype, mfunc ~ "|" ~ mtype);
 
-    enum argclose = mfunc[$ - mtype.length - 1];
-    static assert(argclose >= 'X' && argclose <= 'Z');
+        immutable argclose = mfunc[$ - mtype.length - 1];
+        final switch (argclose)
+        {
+            case 'X': return Variadic.typesafe;
+            case 'Y': return (callconv == "C") ? Variadic.c : Variadic.d;
+            case 'Z': return Variadic.no;
+        }
+    }
 
-    enum Variadic variadicFunctionStyle =
-        argclose == 'X' ? Variadic.typesafe :
-        argclose == 'Y' ? (callconv == "C") ? Variadic.c : Variadic.d :
-        Variadic.no; // 'Z'
+    enum Variadic variadicFunctionStyle = determineVariadicity();
 }
 
 unittest
@@ -2027,6 +2030,7 @@ template InterfacesTuple(T)
 
 unittest
 {
+    struct Test1_WorkaroundForBug2986
     {
         // doc example
         interface I1 {}
@@ -2037,6 +2041,7 @@ unittest
         alias InterfacesTuple!(C) TL;
         static assert(is(TL[0] == I1) && is(TL[1] == I2));
     }
+    struct Test2_WorkaroundForBug2986
     {
         interface Iaa {}
         interface Iab {}
@@ -2046,11 +2051,11 @@ unittest
         interface Ib : Iba, Ibb {}
         interface I : Ia, Ib {}
         interface J {}
-        class B2 : J {}
-        class C2 : B2, Ia, Ib {}
+        class B : J {}
+        class C : B, Ia, Ib {}
         static assert(is(InterfacesTuple!(I) ==
                         TypeTuple!(Ia, Iaa, Iab, Ib, Iba, Ibb)));
-        static assert(is(InterfacesTuple!(C2) ==
+        static assert(is(InterfacesTuple!(C) ==
                         TypeTuple!(J, Ia, Iaa, Iab, Ib, Iba, Ibb)));
     }
 }
@@ -3438,20 +3443,17 @@ unittest
 /**
 Returns the target type of a pointer.
 */
-template PointerTarget(T : T*)
+template pointerTarget(T : T*)
 {
-    alias T PointerTarget;
+    alias T pointerTarget;
 }
-
-/// $(RED Scheduled for deprecation. Please use $(LREF PointerTarget) instead.)
-alias PointerTarget pointerTarget;
 
 unittest
 {
-    static assert( is(PointerTarget!(int*) == int));
-    static assert( is(PointerTarget!(long*) == long));
+    static assert( is(pointerTarget!(int*) == int));
+    static assert( is(pointerTarget!(long*) == long));
 
-    static assert(!is(PointerTarget!int));
+    static assert(!is(pointerTarget!int));
 }
 
 /**
@@ -3463,7 +3465,14 @@ unittest
  */
 template isIterable(T)
 {
-    enum isIterable = is(typeof({ foreach(elem; T.init) {} }));
+    static if (is(typeof({ foreach(elem; T.init) {} })))
+    {
+        enum bool isIterable = true;
+    }
+    else
+    {
+        enum bool isIterable = false;
+    }
 }
 
 unittest
@@ -3871,44 +3880,6 @@ unittest
     //static assert(is(OriginalType!G == const real));
 }
 
-/**
- * Get the Key type of an Associative Array.
- * Example:
- * ---
- * import std.traits;
- * alias int[string] Hash;
- * static assert(is(KeyType!Hash == string));
- * KeyType!Hash str = "string";   // str is declared as string
- * --- 
- */
-template KeyType(V : V[K], K)
-{
-    alias K KeyType;
-}
-
-/**
- * Get the Value type of an Associative Array.
- * Example:
- * ---
- * import std.traits;
- * alias int[string] Hash;
- * static assert(is(ValueType!Hash == int));
- * ValueType!Hash num = 1;   // num is declared as int
- * --- 
- */
-template ValueType(V : V[K], K)
-{
-    alias V ValueType;
-}
-
-unittest
-{
-    alias int[string] Hash;
-    static assert(is(KeyType!Hash == string));
-    static assert(is(ValueType!Hash == int));
-    KeyType!Hash str = "a";
-    ValueType!Hash num = 1;
-}
 
 /**
  * Returns the corresponding unsigned type for T. T must be a numeric

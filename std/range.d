@@ -574,8 +574,8 @@ accepting an $(D E[]).))
 void put(R, E)(ref R r, E e)
 {
     static if (hasMember!(R, "put") ||
-    (isPointer!R && is(PointerTarget!R == struct) &&
-     hasMember!(PointerTarget!R, "put")))
+    (isPointer!R && is(pointerTarget!R == struct) &&
+     hasMember!(pointerTarget!R, "put")))
     {
         // commit to using the "put" method
         static if (!isArray!R && is(typeof(r.put(e))))
@@ -4295,13 +4295,12 @@ unittest
    Returns a range that goes through the numbers $(D begin), $(D begin +
    step), $(D begin + 2 * step), $(D ...), up to and excluding $(D
    end). The range offered is a random access range. The two-arguments
-   version has $(D step = 1). If $(D begin < end && step < 0) or $(D
-   begin > end && step > 0) or $(D begin == end), then an empty range is
-   returned.
+   version has $(D step = 1). If $(D begin < end && step <= 0) or $(D
+   begin > end && step >= 0), then an empty range is returned. If $(D
+   begin != end) and $(D step == 0), an exception is thrown.
 
    Throws:
-   $(D Exception) if $(D begin != end && step == 0), an exception is
-   thrown.
+   $(D Exception) if $(D step == 0)
 
    Example:
    ----
@@ -4328,8 +4327,8 @@ if ((isIntegral!(CommonType!(B, E)) || isPointer!(CommonType!(B, E)))
 
         this(Value current, Value pastLast, S step)
         {
-            if ((current < pastLast && step >= 0) ||
-                    (current > pastLast && step <= 0))
+            if ((current <= pastLast && step >= 0) ||
+                    (current >= pastLast && step <= 0))
             {
                 enforce(step != 0);
                 this.step = step;
@@ -4353,17 +4352,15 @@ if ((isIntegral!(CommonType!(B, E)) || isPointer!(CommonType!(B, E)))
             }
         }
         @property bool empty() const { return current == pastLast; }
-        @property Value front() { assert(!empty); return current; }
+        @property Value front() { return current; }
         alias front moveFront;
-        void popFront() { assert(!empty); current += step; }
-        @property Value back() { assert(!empty); return pastLast - step; }
+        void popFront() { current += step; }
+        @property Value back() { return pastLast - step; }
         alias back moveBack;
-        void popBack() { assert(!empty); pastLast -= step; }
+        void popBack() { pastLast -= step; }
         @property auto save() { return this; }
         Value opIndex(ulong n)
         {
-            assert(n < this.length);
-
             // Just cast to Value here because doing so gives overflow behavior
             // consistent with calling popFront() n times.
             return cast(Value) (current + step * n);
@@ -4421,17 +4418,15 @@ if (isIntegral!(CommonType!(B, E)) || isPointer!(CommonType!(B, E)))
             }
         }
         @property bool empty() const { return current == pastLast; }
-        @property Value front() { assert(!empty); return current; }
+        @property Value front() { return current; }
         alias front moveFront;
-        void popFront() { assert(!empty); ++current; }
-        @property Value back() { assert(!empty); return pastLast - 1; }
+        void popFront() { ++current; }
+        @property Value back() { return pastLast - 1; }
         alias back moveBack;
-        void popBack() { assert(!empty); --pastLast; }
+        void popBack() { --pastLast; }
         @property auto save() { return this; }
         Value opIndex(ulong n)
         {
-            assert(n < this.length);
-
             // Just cast to Value here because doing so gives overflow behavior
             // consistent with calling popFront() n times.
             return cast(Value) (current + n);
@@ -4494,7 +4489,7 @@ if (isFloatingPoint!(CommonType!(B, E, S)))
             }
         }
         @property bool empty() const { return index == count; }
-        @property Value front() { assert(!empty); return start + step * index; }
+        @property Value front() { return start + step * index; }
         alias front moveFront;
         void popFront()
         {
@@ -4639,12 +4634,6 @@ unittest
     auto iota_of_longs_with_steps = iota(50L, 101L, 10);
     assert(iota_of_longs_with_steps.length == 6);
     assert(equal(iota_of_longs_with_steps, [50L, 60L, 70L, 80L, 90L, 100L]));
-
-    // iota of unsigned zero length (issue 6222, actually trying to consume it
-    // is the only way to find something is wrong because the public
-    // properties are all correct)
-    auto iota_zero_unsigned = iota(0, 0u, 3);
-    assert(count(iota_zero_unsigned) == 0);
 }
 
 unittest

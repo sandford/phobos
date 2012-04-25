@@ -69,16 +69,11 @@ version(D_InlineAsm_X86)
         if (hyperThreading)     feats ~= "HTT";
 
         return format(
-            "Vendor string:    %s\n"~
-            "Processor string: %s\n"~
-            "Signature:        Family=%d Model=%d Stepping=%d\n"~
-            "Features:         %s\n"~
-            "Multithreading:   %d threads / %d cores\n",
-                vendor(),
-                processor(),
-                family, model, stepping,
-                feats,
-                threadsPerCPU, coresPerCPU);
+            "Vendor string:    %s\n", vendor(),
+            "Processor string: %s\n", processor(),
+            "Signature:        Family=%d Model=%d Stepping=%d\n", family, model, stepping,
+            "Features:         %s\n", feats,
+            "Multithreading:   %d threads / %d cores\n", threadsPerCPU, coresPerCPU);
 
     }
 

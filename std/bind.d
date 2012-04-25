@@ -218,9 +218,9 @@ struct Tuple(T ...) {
 
 
         string toString() {
-                auto res = "(" ~ stdFormat("%s", value[0]);
+                auto res = "(" ~ stdFormat(value[0]);
                 foreach (x; value[1..$]) {
-                        res ~= stdFormat(", %s", x);
+                        res ~= stdFormat(", ", x);
                 }
                 return res ~ ")";
         }
